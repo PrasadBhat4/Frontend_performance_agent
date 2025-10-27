@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "frontend-performance-agent": {
+      "command": "node",
+      "args": ["dist/server.js"],
+      "env": {
+        "NODE_ENV": "production"
+      }
+    }
+  }
+}
