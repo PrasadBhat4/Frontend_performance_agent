@@ -1,6 +1,6 @@
 import lighthouse from 'lighthouse';
 import * as chromeLauncher from 'chrome-launcher';
-import { LighthouseAnalysis, Opportunity, Diagnostic } from '../types/index.js';
+import { LighthouseAnalysis, LighthouseMetrics, Opportunity, Diagnostic } from '../types/index.js';
 
 export async function runLighthouse(
   url: string, 
@@ -75,12 +75,15 @@ function parseLighthouseReport(report: any): LighthouseAnalysis {
   const audits = report.audits;
   
   // Extract Core Web Vitals and performance metrics
-  const metrics = {
+  const metrics: LighthouseMetrics = {
     lcp: audits['largest-contentful-paint']?.numericValue || 0,
     fid: audits['max-potential-fid']?.numericValue || 0,
     cls: audits['cumulative-layout-shift']?.numericValue || 0,
     tbt: audits['total-blocking-time']?.numericValue || 0,
     fcp: audits['first-contentful-paint']?.numericValue || 0,
+    tti: audits['interactive']?.numericValue || 0,
+    si: audits['speed-index']?.numericValue || 0,
+    ttfb: audits['server-response-time']?.numericValue || 0,
   };
   
   // Extract optimization opportunities

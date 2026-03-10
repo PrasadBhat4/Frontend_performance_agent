@@ -1,17 +1,34 @@
 {
-  "name": "frontend-performance-agent-mcp",
-  "version": "0.1.0",
-  "description": "MCP server for frontend performance analysis and optimization",
+  "name": "frontend-performance-agent",
+  "version": "0.2.0",
+  "description": "Autonomous AI agent that analyzes and optimizes Next.js performance using Lighthouse, bundle analysis, and AST code transforms",
   "type": "module",
-  "main": "dist/server.js",
+  "main": "dist/agent.js",
+  "exports": {
+    ".": "./dist/agent.js",
+    "./server": "./dist/server.js"
+  },
+  "bin": {
+    "frontend-performance-agent": "./dist/agent-runner.js",
+    "perf-agent": "./dist/agent-runner.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/server.ts",
     "start": "node dist/server.js",
+    "agent": "tsx src/agent-runner.ts",
+    "agent:run": "node dist/agent-runner.js",
+    "prepublishOnly": "npm run build",
     "test": "vitest",
     "lint": "eslint src/**/*.ts"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.36.0",
     "@babel/parser": "^7.23.0",
     "@babel/traverse": "^7.23.0",
     "@babel/types": "^7.23.0",
@@ -24,6 +41,14 @@
     "lighthouse": "^11.0.0",
     "picocolors": "^1.0.0"
   },
+  "peerDependencies": {
+    "next": ">=13.0.0"
+  },
+  "peerDependenciesMeta": {
+    "next": {
+      "optional": false
+    }
+  },
   "devDependencies": {
     "@types/babel__traverse": "^7.20.0",
     "@types/fs-extra": "^11.0.0",
@@ -34,13 +59,29 @@
     "typescript": "^5.0.0",
     "vitest": "^1.0.0"
   },
+  "engines": {
+    "node": ">=18.0.0"
+  },
   "keywords": [
     "mcp",
     "performance",
     "optimization",
     "next.js",
+    "nextjs",
     "claude",
+    "anthropic",
+    "lighthouse",
+    "core-web-vitals",
+    "bundle-analyzer",
+    "ai-agent",
     "frontend"
   ],
-  "license": "MIT"
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/your-org/frontend-performance-agent"
+  }
 }
