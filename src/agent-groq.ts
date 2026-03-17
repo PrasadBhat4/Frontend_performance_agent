@@ -377,29 +377,41 @@ export async function runGroqAgent(projectPath: string, options: AgentOptions = 
         tool_choice: 'auto',
       });
     } catch (err: any) {
+      // Helper: handle tool_use_failed (model tried to output report as a tool call)
+      const handleToolUseFailed = (e: any): boolean => {
+        if (e?.status === 400 && e?.error?.code === 'tool_use_failed') {
+          const text = e?.error?.failed_generation ?? '';
+          if (text) {
+            console.log('\n══════════════════════════════════════════════════════════');
+            console.log('  Final Report');
+            console.log('══════════════════════════════════════════════════════════\n');
+            console.log(text);
+          }
+          return true;
+        }
+        return false;
+      };
+
+      if (handleToolUseFailed(err)) { break; }
+
       // Auto-fallback chain when rate limits hit
       const fallbacks = ['meta-llama/llama-4-scout-17b-16e-instruct', 'llama-3.1-8b-instant'];
       const nextModel = fallbacks.find(m => m !== model);
       if (err?.status === 429 && nextModel) {
         console.log(`  ⚠️  Rate limit on ${model}, falling back to ${nextModel}...`);
         model = nextModel;
-        response = await groq.chat.completions.create({
-          model,
-          max_tokens: 4096,
-          messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...messages],
-          tools: TOOLS,
-          tool_choice: 'auto',
-        });
-      } else if (err?.status === 400 && err?.error?.code === 'tool_use_failed') {
-        // Model tried to return final report as a tool call — extract and display it
-        const text = err?.error?.failed_generation ?? '';
-        if (text) {
-          console.log('\n══════════════════════════════════════════════════════════');
-          console.log('  Final Report');
-          console.log('══════════════════════════════════════════════════════════\n');
-          console.log(text);
+        try {
+          response = await groq.chat.completions.create({
+            model,
+            max_tokens: 4096,
+            messages: [{ role: 'system', content: SYSTEM_PROMPT }, ...messages],
+            tools: TOOLS,
+            tool_choice: 'auto',
+          });
+        } catch (fallbackErr: any) {
+          if (handleToolUseFailed(fallbackErr)) { break; }
+          throw fallbackErr;
         }
-        break;
       } else {
         throw err;
       }
