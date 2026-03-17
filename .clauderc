@@ -1,10 +1,10 @@
 {
   "mcpServers": {
     "frontend-performance-agent": {
-      "command": "node",
-      "args": ["dist/server.js"],
+      "command": "npx",
+      "args": ["tsx", "src/server.ts"],
       "env": {
-        "NODE_ENV": "production"
+        "NODE_ENV": "development"
       }
     }
   }

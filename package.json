@@ -1,7 +1,7 @@
 {
   "name": "frontend-performance-agent",
   "version": "0.2.0",
-  "description": "Autonomous AI agent that analyzes and optimizes Next.js performance using Lighthouse, bundle analysis, and AST code transforms",
+  "description": "Autonomous AI agent that detects, audits, and optimizes Next.js performance — powered by Groq (free) or Anthropic Claude. Runs Lighthouse, analyzes bundles, and applies AST codemods automatically.",
   "type": "module",
   "main": "dist/agent.js",
   "exports": {
@@ -10,10 +10,14 @@
   },
   "bin": {
     "frontend-performance-agent": "./dist/agent-runner.js",
-    "perf-agent": "./dist/agent-runner.js"
+    "perf-agent": "./dist/agent-runner.js",
+    "perf-audit": "./bin/perf-audit",
+    "perf-agent-groq": "./bin/perf-agent-groq"
   },
   "files": [
     "dist",
+    "bin",
+    "src",
     "README.md",
     "LICENSE"
   ],
@@ -23,6 +27,7 @@
     "start": "node dist/server.js",
     "agent": "tsx src/agent-runner.ts",
     "agent:run": "node dist/agent-runner.js",
+    "pipeline": "tsx src/pipeline-runner.ts",
     "prepublishOnly": "npm run build",
     "test": "vitest",
     "lint": "eslint src/**/*.ts"
@@ -37,6 +42,7 @@
     "chrome-launcher": "^1.0.0",
     "fs-extra": "^11.0.0",
     "glob": "^10.0.0",
+    "groq-sdk": "^1.1.1",
     "jscodeshift": "^0.15.0",
     "lighthouse": "^11.0.0",
     "picocolors": "^1.0.0"
@@ -83,5 +89,7 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/your-org/frontend-performance-agent"
-  }
+  },
+  "author": "Prasad",
+  "homepage": "https://github.com/your-org/frontend-performance-agent#readme"
 }
