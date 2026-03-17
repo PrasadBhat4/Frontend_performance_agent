@@ -463,28 +463,114 @@ export async function runGroqAgent(projectPath: string, options: AgentOptions = 
     }
   }
 
-  // Summary
-  console.log('\n══════════════════════════════════════════════════════════');
-  console.log('  Summary');
-  console.log('══════════════════════════════════════════════════════════\n');
+  // ─── Pretty Summary ───────────────────────────────────────────────────────
+  printSummary(ctx, prod, dryRun, device, throttling, iterations);
+}
 
-  if (ctx.lighthouseRuns.length >= 2) {
-    const before = ctx.lighthouseRuns[0];
-    const after = ctx.lighthouseRuns[ctx.lighthouseRuns.length - 1];
-    const delta = after.performanceScore - before.performanceScore;
-    const sign = delta >= 0 ? '+' : '';
-    console.log(`  Score   : ${before.performanceScore} → ${after.performanceScore}  (${sign}${delta}) ${delta >= 10 ? '🎉' : delta >= 0 ? '✅' : '⚠️'}`);
-  } else if (ctx.lighthouseRuns.length === 1) {
-    console.log(`  Score   : ${ctx.lighthouseRuns[0].performanceScore}/100 (baseline only)`);
+function printSummary(
+  ctx: RunContext,
+  prod: boolean,
+  dryRun: boolean,
+  device: string,
+  throttling: string,
+  iterations: number,
+) {
+  const W = 62;
+  const line  = '═'.repeat(W);
+  const thin  = '─'.repeat(W);
+  const pad   = (s: string, n: number) => s.length >= n ? s.slice(0, n) : s + ' '.repeat(n - s.length);
+  const rpad  = (s: string, n: number) => s.length >= n ? s.slice(0, n) : ' '.repeat(n - s.length) + s;
+
+  console.log(`\n╔${line}╗`);
+  console.log(`║${pad('  📊  Performance Report', W)}║`);
+  console.log(`╠${line}╣`);
+  console.log(`║  Mode    : ${pad(prod ? 'Production  (next build + next start)' : 'Dev  (next dev — scores are lower)', W - 12)}║`);
+  console.log(`║  Device  : ${pad(`${device}  |  Throttling: ${throttling}`, W - 12)}║`);
+  console.log(`║  Changes : ${pad(dryRun ? 'Dry run (no files written)' : 'Applied to disk', W - 12)}║`);
+  console.log(`╠${line}╣`);
+
+  const hasBefore = ctx.lighthouseRuns.length >= 1;
+  const hasAfter  = ctx.lighthouseRuns.length >= 2;
+  const before    = hasBefore ? ctx.lighthouseRuns[0] : null;
+  const after     = hasAfter  ? ctx.lighthouseRuns[ctx.lighthouseRuns.length - 1] : null;
+
+  if (before) {
+    // Score headline
+    if (after) {
+      const delta = after.performanceScore - before.performanceScore;
+      const sign  = delta >= 0 ? '+' : '';
+      const emoji = delta >= 15 ? '🎉' : delta >= 5 ? '✅' : delta >= 0 ? '➡️ ' : '⚠️ ';
+      const scoreStr = `${before.performanceScore}  →  ${after.performanceScore}  (${sign}${delta})  ${emoji}`;
+      console.log(`║  Score   : ${pad(scoreStr, W - 12)}║`);
+    } else {
+      console.log(`║  Score   : ${pad(`${before.performanceScore}/100  (baseline only)`, W - 12)}║`);
+    }
+
+    // Metrics table
+    console.log(`╠${line}╣`);
+    const COL = { label: 16, val: 12, delta: 10 };
+    const hdr = `  ${pad('Metric', COL.label)}${rpad('Before', COL.val)}${rpad('After', COL.val)}${rpad('Δ', COL.delta)}`;
+    console.log(`║${pad(hdr, W)}║`);
+    console.log(`║  ${thin.slice(0, W - 2)}║`);
+
+    type MetricRow = { label: string; before: number; after: number | undefined; fmt: (v: number) => string; lowerIsBetter: boolean };
+    const bm = before.metrics;
+    const am = after?.metrics;
+
+    const ms  = (v: number) => `${Math.round(v)}ms`;
+    const sec = (v: number) => `${(v / 1000).toFixed(2)}s`;
+    const cls = (v: number) => v.toFixed(3);
+
+    const rows: MetricRow[] = [
+      { label: 'LCP',  before: bm.lcp,  after: am?.lcp,  fmt: sec,  lowerIsBetter: true  },
+      { label: 'CLS',  before: bm.cls,  after: am?.cls,  fmt: cls,  lowerIsBetter: true  },
+      { label: 'TBT',  before: bm.tbt,  after: am?.tbt,  fmt: ms,   lowerIsBetter: true  },
+      { label: 'FCP',  before: bm.fcp,  after: am?.fcp,  fmt: sec,  lowerIsBetter: true  },
+      { label: 'TTI',  before: bm.tti,  after: am?.tti,  fmt: sec,  lowerIsBetter: true  },
+      { label: 'SI',   before: bm.si,   after: am?.si,   fmt: sec,  lowerIsBetter: true  },
+      { label: 'TTFB', before: bm.ttfb, after: am?.ttfb, fmt: ms,   lowerIsBetter: true  },
+    ];
+
+    for (const r of rows) {
+      const bStr = r.fmt(r.before);
+      const aStr = r.after !== undefined ? r.fmt(r.after) : '—';
+      let dStr = '—';
+      let marker = '';
+      if (r.after !== undefined) {
+        const diff = r.after - r.before;
+        const sign = diff >= 0 ? '+' : '';
+        dStr = `${sign}${r.fmt(Math.abs(diff))}`;
+        if (diff === 0)          { marker = '  '; }
+        else if (r.lowerIsBetter && diff < 0) { marker = ' ✅'; }
+        else if (r.lowerIsBetter && diff > 0) { marker = ' ⚠️'; }
+        else if (!r.lowerIsBetter && diff > 0) { marker = ' ✅'; }
+        else                     { marker = ' ⚠️'; }
+      }
+      const row = `  ${pad(r.label, COL.label)}${rpad(bStr, COL.val)}${rpad(aStr, COL.val)}${rpad(dStr + marker, COL.delta + 2)}`;
+      console.log(`║${pad(row, W)}║`);
+    }
+  } else {
+    console.log(`║  ${pad('No Lighthouse data collected.', W - 2)}║`);
   }
 
-  console.log(`  Applied : ${ctx.appliedTransforms.length} transforms`);
-  ctx.appliedTransforms.forEach((t: any) => console.log(`    ✅ ${t.transformType} → ${path.basename(t.filePath)}`));
+  // Transforms
+  console.log(`╠${line}╣`);
+  console.log(`║  ${pad(`Transforms applied: ${ctx.appliedTransforms.length}   skipped: ${ctx.skippedTransforms.length}   iterations: ${iterations}`, W - 2)}║`);
+  if (ctx.appliedTransforms.length > 0) {
+    console.log(`║  ${thin.slice(0, W - 2)}║`);
+    for (const t of ctx.appliedTransforms) {
+      const label = `✅  ${t.transformType}  →  ${path.basename(t.filePath)}`;
+      console.log(`║    ${pad(label, W - 4)}║`);
+    }
+  }
+  if (ctx.skippedTransforms.length > 0) {
+    for (const t of ctx.skippedTransforms as any[]) {
+      const label = `⏭️   ${t.type}  →  ${path.basename(t.filePath)}`;
+      console.log(`║    ${pad(label, W - 4)}║`);
+    }
+  }
 
-  console.log(`  Skipped : ${ctx.skippedTransforms.length} transforms`);
-  ctx.skippedTransforms.forEach((t: any) => console.log(`    ⏭️  ${t.type} → ${path.basename(t.filePath)}: ${t.reason}`));
-
-  console.log(`  Iterations: ${iterations}\n`);
+  console.log(`╚${line}╝\n`);
 }
 
 // ---------------------------------------------------------------------------

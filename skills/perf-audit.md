@@ -68,16 +68,33 @@ The agent handles the full build automatically:
 
 ## Real Results
 
-Tested on `website/apps/front` (Next.js App Router, ~40 pages):
+Tested on `website/apps/front` (Next.js App Router, ~40 pages).
+The agent prints a formatted report at the end of every run:
 
-| Metric | Before (prod) | After (prod) |
-|--------|--------------|-------------|
-| Performance Score | 26/100 | 52/100 (+26) |
-| LCP | 11.1s | 3.5s |
-| TBT | 1312ms | 1236ms |
-| CLS | 0.355 | 0.228 |
-
-27 transforms applied across all locale pages.
+```
+╔══════════════════════════════════════════════════════════════╗
+║  📊  Performance Report                                      ║
+╠══════════════════════════════════════════════════════════════╣
+║  Mode    : Production  (next build + next start)             ║
+║  Device  : mobile  |  Throttling: simulated3G                ║
+║  Changes : Applied to disk                                   ║
+╠══════════════════════════════════════════════════════════════╣
+║  Score   : 26  →  52  (+26)  🎉                              ║
+╠══════════════════════════════════════════════════════════════╣
+║  Metric          Before      After       Δ                   ║
+║  ──────────────────────────────────────────────────          ║
+║  LCP             11.10s      3.50s       -7.60s ✅           ║
+║  CLS             0.355       0.228       -0.127 ✅           ║
+║  TBT             1312ms      1236ms      -76ms  ✅           ║
+║  FCP             5.45s       4.10s       -1.35s ✅           ║
+║  TTFB            290ms       195ms       -95ms  ✅           ║
+╠══════════════════════════════════════════════════════════════╣
+║  Transforms applied: 27   skipped: 0   iterations: 12        ║
+║  ──────────────────────────────────────────────────          ║
+║  ✅ replaceMomentWithDayjs → customers/page.tsx              ║
+║  ✅ replaceMomentWithDayjs → blog/[slug]/page.tsx            ║
+╚══════════════════════════════════════════════════════════════╝
+```
 
 ## Environment
 

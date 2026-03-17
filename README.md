@@ -96,6 +96,94 @@ npx tsx src/pipeline-runner.ts --project ./my-next-app --prod
 
 ---
 
+## Setup Guide
+
+### 1 — Prerequisites
+
+| Requirement | Check |
+|-------------|-------|
+| Node.js 18+ | `node --version` |
+| Chrome/Chromium | Required for Lighthouse |
+| A Next.js 13+ project | Pages Router or App Router |
+| Free Groq API key | [console.groq.com](https://console.groq.com) — no credit card |
+
+### 2 — Install
+
+```bash
+# Global install (recommended)
+npm install -g frontend-performance-agent
+
+# Or run directly from source
+git clone https://github.com/your-org/frontend-performance-agent
+cd frontend-performance-agent
+npm install
+```
+
+### 3 — Set your API key
+
+```bash
+# Add to shell profile so it persists
+echo 'export GROQ_API_KEY=gsk_...' >> ~/.zshrc && source ~/.zshrc
+
+# Verify it's set
+echo $GROQ_API_KEY
+```
+
+### 4 — Run
+
+```bash
+# Interactive mode — picks up your project automatically
+perf-agent-groq --prod
+
+# It will ask three questions:
+#   Which project to audit?     → pick number or enter path
+#   Device?                     → mobile / desktop
+#   Server mode?                → prod (recommended for real scores)
+#   Apply changes?              → preview / apply
+```
+
+### 5 — What to expect
+
+```
+╔══════════════════════════════════════════════════════════════╗
+║  📊  Performance Report                                      ║
+╠══════════════════════════════════════════════════════════════╣
+║  Mode    : Production  (next build + next start)             ║
+║  Device  : mobile  |  Throttling: simulated3G                ║
+║  Changes : Applied to disk                                   ║
+╠══════════════════════════════════════════════════════════════╣
+║  Score   : 26  →  52  (+26)  🎉                              ║
+╠══════════════════════════════════════════════════════════════╣
+║  Metric          Before      After       Δ                   ║
+║  ──────────────────────────────────────────────────          ║
+║  LCP             11.10s      3.50s       -7.60s ✅           ║
+║  CLS             0.355       0.228       -0.127 ✅           ║
+║  TBT             1312ms      1236ms      -76ms  ✅           ║
+║  TTFB            290ms       195ms       -95ms  ✅           ║
+╠══════════════════════════════════════════════════════════════╣
+║  Transforms applied: 27   skipped: 0   iterations: 12        ║
+║  ──────────────────────────────────────────────────          ║
+║  ✅ replaceMomentWithDayjs → customers/page.tsx              ║
+║  ✅ replaceMomentWithDayjs → blog/[slug]/page.tsx            ║
+║  ... 25 more                                                 ║
+╚══════════════════════════════════════════════════════════════╝
+```
+
+> **Build time**: `next build` takes 2–5 minutes depending on your project size.
+> The agent waits automatically — no extra steps needed.
+
+### Troubleshooting
+
+| Problem | Fix |
+|---------|-----|
+| `GROQ_API_KEY is not set` | Run `export GROQ_API_KEY=gsk_...` or add to `~/.zshrc` |
+| Rate limit warning | Agent auto-falls back to a different free Groq model |
+| Build fails | Check `next build` works standalone: `cd your-app && npm run build` |
+| Chrome not found | Install Chrome: `brew install --cask google-chrome` (macOS) |
+| Port 3000 in use | Stop other servers or pass `--url http://localhost:PORT` |
+
+---
+
 ## Installation
 
 ```bash
