@@ -31,6 +31,9 @@ You point it at any Next.js project. It does the rest:
 
 ## Quick Start
 
+> **For accurate scores always add `--prod`** — without it Lighthouse runs against
+> the unoptimised dev server and scores look 20–30 points lower than production reality.
+
 ### Option 1 — Groq (Free, Recommended)
 
 Get a free API key at [console.groq.com](https://console.groq.com) — no credit card needed.
@@ -42,8 +45,8 @@ npm install -g frontend-performance-agent
 # Set your free Groq key
 echo 'export GROQ_API_KEY=gsk_...' >> ~/.zshrc && source ~/.zshrc
 
-# Run — it will ask which project to audit
-perf-agent-groq
+# Run in production mode — it will ask which project to audit
+perf-agent-groq --prod
 ```
 
 Output:
@@ -59,14 +62,21 @@ Which folder to audit? (number or full path): 1
 🔍 Found Next.js app at: ~/Documents/work/website/apps/front
 
 📱 Device? [mobile/desktop]: mobile
-🔧 Mode? [preview/apply]: apply
+🏗️  Server mode? [dev/prod]: prod
+🔧 Changes? [preview/apply]: apply
 
 🤖 Groq AI Agent starting...
+   Server  : Production (next build + next start)
+
   → analyzeBundle(...)
-  → runLighthouse(...)
+  🏗️  Running next build (this may take a few minutes)...
+  ✅ Production server ready at http://localhost:3000
+  → runLighthouse(...)        ← accurate production score
   → applyCodeTransform(replaceMomentWithDayjs → customers/page.tsx) ✅
   → applyCodeTransform(replaceMomentWithDayjs → blog/[slug]/page.tsx) ✅
   ... applied 27 transforms
+  🏗️  Rebuilding to measure real bundle savings...
+  → runLighthouse(...)        ← after score
 
 Score: 26 → 52 (+26) 🎉
 ```
@@ -75,13 +85,13 @@ Score: 26 → 52 (+26) 🎉
 
 ```bash
 export ANTHROPIC_API_KEY=sk-ant-...
-perf-agent --project ./my-next-app --verbose
+perf-agent --project ./my-next-app --prod --verbose
 ```
 
 ### Option 3 — No AI (Pipeline Runner, zero cost)
 
 ```bash
-npx tsx src/pipeline-runner.ts --project ./my-next-app
+npx tsx src/pipeline-runner.ts --project ./my-next-app --prod
 ```
 
 ---
