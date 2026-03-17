@@ -10,7 +10,7 @@
 
 import Groq from 'groq-sdk';
 import { analyzeBundle } from './tools/bundleAnalyzer.js';
-import { runLighthouse, startLocalServer, checkUrlAccessibility } from './tools/lighthouseRunner.js';
+import { runLighthouse, startLocalServer, startProdServer, checkUrlAccessibility } from './tools/lighthouseRunner.js';
 import { scanDataFetching } from './tools/dataFetchingScanner.js';
 import { applyCodeTransform } from './tools/codeTransformer.js';
 import type { TransformType } from './tools/codeTransformer.js';
@@ -47,6 +47,7 @@ interface AgentOptions {
   maxIterations?: number;
   model?: string;
   verbose?: boolean;
+  prod?: boolean;  // build for production before auditing
 }
 
 // ---------------------------------------------------------------------------
@@ -62,9 +63,14 @@ Call analyzeBundle to identify heavy dependencies and tree-shaking opportunities
 
 ### Step 2 – Performance Baseline
 1. Call checkUrl to see if the app URL is accessible
-2. If not, call startDevServer to spin it up
+2. If not accessible:
+   - If prod mode is requested → call startProdServer (runs next build + next start)
+   - Otherwise → call startDevServer (runs next dev, faster to start)
 3. Call runLighthouse with the target URL, device: "mobile", throttling: "simulated3G"
 4. Record all Core Web Vitals: performanceScore, LCP, CLS, TBT, FCP, TTI, Speed Index, TTFB
+
+NOTE: Production mode gives accurate scores because next build tree-shakes and minifies.
+Dev mode is faster to start but scores will be lower (unoptimised bundles).
 
 ### Step 3 – Discover actual source files (MANDATORY)
 Call listFiles(projectPath) to get the real list of source files.
@@ -155,7 +161,21 @@ const TOOLS: Groq.Chat.Completions.ChatCompletionTool[] = [
     type: 'function',
     function: {
       name: 'startDevServer',
-      description: 'Starts the Next.js dev server and returns the URL when ready.',
+      description: 'Starts the Next.js dev server (next dev) and returns the URL when ready. Fast startup, but scores reflect unoptimised dev bundles.',
+      parameters: {
+        type: 'object',
+        properties: {
+          projectPath: { type: 'string', description: 'Absolute path to the Next.js project root' },
+        },
+        required: ['projectPath'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'startProdServer',
+      description: 'Runs "next build" (full production build with tree-shaking + minification) then starts "next start". Use this when you want accurate Lighthouse scores that reflect real-world bundle sizes. Takes longer than startDevServer.',
       parameters: {
         type: 'object',
         properties: {
@@ -267,6 +287,10 @@ async function executeTool(
         const url = await startLocalServer(args.projectPath);
         return { url, success: true };
       }
+      case 'startProdServer': {
+        const url = await startProdServer(args.projectPath);
+        return { url, success: true };
+      }
       case 'runLighthouse': {
         const result = await runLighthouse(args.url, {
           device: args.device ?? 'mobile',
@@ -316,6 +340,7 @@ export async function runGroqAgent(projectPath: string, options: AgentOptions = 
     throttling = 'simulated3G',
     maxIterations = 40,
     verbose = true,
+    prod = false,
   } = options;
   let model = options.model ?? 'llama-3.3-70b-versatile';
 
@@ -326,12 +351,13 @@ export async function runGroqAgent(projectPath: string, options: AgentOptions = 
   console.log(`   Project : ${projectPath}`);
   console.log(`   Model   : ${model} (free tier)`);
   console.log(`   Device  : ${device}  |  Throttling: ${throttling}`);
+  console.log(`   Server  : ${prod ? 'Production (next build + next start)' : 'Dev (next dev)'}`);
   console.log(`   Mode    : ${dryRun ? 'Dry Run (preview only)' : 'Apply Changes'}\n`);
 
   const messages: Groq.Chat.Completions.ChatCompletionMessageParam[] = [
     {
       role: 'user',
-      content: buildUserMessage(projectPath, url, device, throttling, dryRun),
+      content: buildUserMessage(projectPath, url, device, throttling, dryRun, prod),
     },
   ];
 
@@ -459,6 +485,7 @@ function buildUserMessage(
   device: string,
   throttling: string,
   dryRun: boolean,
+  prod: boolean = false,
 ): string {
   // Pre-discover real source files so the model never has to guess
   const allFiles = listProjectFiles(projectPath);
@@ -471,9 +498,13 @@ function buildUserMessage(
     .slice(0, 10);
   const relevantFiles = [...pageFiles, ...otherFiles];
 
+  const serverInstruction = prod
+    ? 'Server mode: PRODUCTION — call startProdServer (runs next build + next start). This gives accurate scores.'
+    : 'Server mode: DEV — call startDevServer (runs next dev). Faster startup but scores reflect unoptimised dev bundles.';
+
   return `Analyze and optimize the Next.js project at: ${projectPath}
 
-${url ? `URL for Lighthouse: ${url}` : 'No URL provided — start dev server at http://localhost:3000 if needed.'}
+${url ? `URL for Lighthouse: ${url}` : `No URL provided — spin up a local server at http://localhost:3000.\n${serverInstruction}`}
 Device: ${device} | Throttling: ${throttling}
 Dry run: ${dryRun}${dryRun ? ' (PREVIEW ONLY — do not write files)' : ' (APPLY changes to files)'}
 
@@ -573,6 +604,7 @@ async function main() {
   let project = '';
   let url: string | undefined;
   let dryRun = false;
+  let prod = false;
   let device: 'mobile' | 'desktop' = 'mobile';
   let model = 'llama-3.3-70b-versatile';
 
@@ -581,6 +613,7 @@ async function main() {
       case '--project': case '-p': project = argv[++i] ?? ''; break;
       case '--url':     case '-u': url     = argv[++i];       break;
       case '--dry-run':            dryRun  = true;            break;
+      case '--prod':               prod    = true;            break;
       case '--device':             device  = (argv[++i] ?? 'mobile') as 'mobile' | 'desktop'; break;
       case '--model':              model   = argv[++i] ?? model; break;
       case '--help': case '-h':
@@ -591,10 +624,15 @@ Options:
   --project, -p  <path>      Next.js project root (prompted if omitted)
   --url,     -u  <url>       Lighthouse target URL
   --dry-run                  Preview only, don't write files
+  --prod                     Run "next build" + "next start" before auditing (accurate scores)
   --device       mobile|desktop                       (default: mobile)
   --throttling   simulated3G|simulated4G|none         (default: simulated3G)
   --model        <model>     Groq model               (default: llama-3.3-70b-versatile)
   --help
+
+Server modes:
+  (default)  Uses "next dev"   — fast startup, lower Lighthouse scores (dev bundles)
+  --prod     Uses "next build" + "next start" — accurate production scores, slower startup
 
 Free models on Groq (https://console.groq.com):
   llama-3.3-70b-versatile                  ← recommended
@@ -613,11 +651,13 @@ Environment:
     project = await promptForProject();
     const dev = await ask('\n📱 Device? [mobile/desktop] (default: mobile): ');
     device = dev.toLowerCase() === 'desktop' ? 'desktop' : 'mobile';
-    const mode = await ask('\n🔧 Mode? [preview/apply] (default: preview): ');
+    const serverMode = await ask('\n🏗️  Server mode? [dev/prod] (prod = accurate scores, slower): ');
+    prod = serverMode.toLowerCase() === 'prod';
+    const mode = await ask('\n🔧 Changes? [preview/apply] (default: preview): ');
     dryRun = mode.toLowerCase() !== 'apply';
   }
 
-  await runGroqAgent(project, { url, dryRun, device, model, verbose: true });
+  await runGroqAgent(project, { url, dryRun, device, model, verbose: true, prod });
 }
 
 main().catch(err => {

@@ -16,7 +16,7 @@ You point it at any Next.js project. It does the rest:
 5. **Applies fixes autonomously** — rewrites code using AST codemods
 6. **Re-runs Lighthouse** — shows before/after score comparison
 
-### Real Results (website/apps/front)
+### Real Results (website/apps/front — production build)
 
 | Metric | Before | After |
 |--------|--------|-------|
@@ -24,6 +24,8 @@ You point it at any Next.js project. It does the rest:
 | LCP | 11.1s | 3.5s |
 | TBT | 1312ms | 1236ms |
 | CLS | 0.355 | 0.228 |
+
+> **Why production build matters**: `next dev` skips tree-shaking and minification, so Lighthouse scores on dev server look much worse than reality (and don't reflect code changes like moment→dayjs). Always use `--prod` for accurate before/after comparisons.
 
 ---
 
@@ -107,11 +109,16 @@ perf-agent-groq [options]
 
 Options:
   --project, -p  <path>    Next.js root (interactive prompt if omitted)
-  --url,     -u  <url>     Lighthouse URL (auto-starts dev server if omitted)
+  --url,     -u  <url>     Lighthouse URL (auto-starts server if omitted)
   --dry-run                Preview changes, don't write files
+  --prod                   Build for production before auditing (accurate scores)
   --device       mobile|desktop            (default: mobile)
   --throttling   simulated3G|simulated4G|none  (default: simulated3G)
   --model        <model>   Groq model      (default: llama-3.3-70b-versatile)
+
+Server modes:
+  (default)  next dev   — fast startup, lower scores (dev bundles are unoptimised)
+  --prod     next build + next start — accurate production Lighthouse scores
 
 Environment:
   GROQ_API_KEY   Free key from https://console.groq.com

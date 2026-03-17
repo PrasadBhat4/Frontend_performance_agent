@@ -6,7 +6,7 @@
  */
 
 import { analyzeBundle } from './tools/bundleAnalyzer.js';
-import { runLighthouse, startLocalServer, checkUrlAccessibility } from './tools/lighthouseRunner.js';
+import { runLighthouse, startLocalServer, startProdServer, checkUrlAccessibility } from './tools/lighthouseRunner.js';
 import { scanDataFetching } from './tools/dataFetchingScanner.js';
 import { applyCodeTransform, TransformType } from './tools/codeTransformer.js';
 import path from 'path';
@@ -23,6 +23,7 @@ interface Args {
   project: string;
   url?: string;
   dryRun: boolean;
+  prod: boolean;
   device: 'mobile' | 'desktop';
   throttling: 'simulated3G' | 'simulated4G' | 'none';
 }
@@ -32,6 +33,7 @@ async function parseArgs(): Promise<Args> {
   const result: Args = {
     project: '',
     dryRun: false,
+    prod: false,
     device: 'mobile',
     throttling: 'simulated3G',
   };
@@ -41,6 +43,7 @@ async function parseArgs(): Promise<Args> {
       case '--project': case '-p': result.project = argv[++i]; break;
       case '--url':     case '-u': result.url     = argv[++i]; break;
       case '--dry-run':            result.dryRun  = true;      break;
+      case '--prod':               result.prod    = true;      break;
       case '--device':             result.device  = argv[++i] as 'mobile' | 'desktop'; break;
       case '--throttling':         result.throttling = argv[++i] as Args['throttling']; break;
       case '--help': case '-h':    printHelp(); process.exit(0);
@@ -51,6 +54,7 @@ async function parseArgs(): Promise<Args> {
   if (!result.project) {
     result.project = await promptForProject();
     result.device = await promptForDevice();
+    result.prod = await promptForServerMode();
     result.dryRun = await promptForMode();
   }
   return result;
@@ -117,8 +121,13 @@ async function promptForDevice(): Promise<'mobile' | 'desktop'> {
   return ans.toLowerCase() === 'desktop' ? 'desktop' : 'mobile';
 }
 
+async function promptForServerMode(): Promise<boolean> {
+  const ans = await ask('\n🏗️  Server mode? [dev/prod] (prod = accurate scores, takes longer for build): ');
+  return ans.toLowerCase() === 'prod';
+}
+
 async function promptForMode(): Promise<boolean> {
-  const ans = await ask('\n🔧 Mode? [preview/apply] (default: preview, no files changed): ');
+  const ans = await ask('\n🔧 Changes? [preview/apply] (default: preview, no files changed): ');
   return ans.toLowerCase() !== 'apply';
 }
 
@@ -131,14 +140,20 @@ Usage:
 
 Options:
   --project, -p  <path>            Next.js project root  (required)
-  --url,     -u  <url>             Lighthouse target URL  (default: starts dev server)
+  --url,     -u  <url>             Lighthouse target URL  (default: starts local server)
   --dry-run                        Preview changes, don't write files
+  --prod                           Run "next build" + "next start" for accurate scores
   --device       mobile|desktop    (default: mobile)
   --throttling   simulated3G|simulated4G|none  (default: simulated3G)
   --help, -h
 
+Server modes:
+  (default)  "next dev"   — fast startup, lower scores (dev bundles are unoptimised)
+  --prod     "next build" + "next start" — accurate production Lighthouse scores
+
 Examples:
   npx tsx src/pipeline-runner.ts --project ./my-app --dry-run
+  npx tsx src/pipeline-runner.ts --project ./my-app --prod
   npx tsx src/pipeline-runner.ts --project ./my-app --url http://localhost:3000
 `);
 }
@@ -204,6 +219,7 @@ async function run() {
   console.log(`  Project   : ${args.project}`);
   if (args.url) console.log(`  URL       : ${args.url}`);
   console.log(`  Device    : ${args.device}  |  Throttling: ${args.throttling}`);
+  console.log(`  Server    : ${args.prod ? 'Production (next build + next start)' : 'Dev (next dev)'}`);
   console.log(`  Mode      : ${args.dryRun ? 'Dry Run (preview only)' : 'Apply Changes'}\n`);
 
   // ── Step 1: Bundle analysis ──────────────────────────────────────────────
@@ -225,14 +241,22 @@ async function run() {
     const running = await checkUrlAccessibility('http://localhost:3000');
     if (running) {
       targetUrl = 'http://localhost:3000';
-      console.log('   Dev server already running at http://localhost:3000');
+      console.log('   Server already running at http://localhost:3000');
+    } else if (args.prod) {
+      console.log('   Building for production and starting next start…');
+      try {
+        targetUrl = await startProdServer(args.project);
+      } catch (e) {
+        console.warn(`   ⚠️  Production build/start failed: ${e}`);
+        console.warn('   Skipping Lighthouse. Pass --url to provide a running URL.\n');
+      }
     } else {
-      console.log('   Starting dev server…');
+      console.log('   Starting dev server (next dev)…');
       try {
         targetUrl = await startLocalServer(args.project);
       } catch (e) {
         console.warn(`   ⚠️  Could not start dev server: ${e}`);
-        console.warn('   Skipping Lighthouse. Pass --url to provide a running URL.\n');
+        console.warn('   Skipping Lighthouse. Pass --url or use --prod flag.\n');
       }
     }
   }
@@ -305,6 +329,17 @@ async function run() {
   let afterData: typeof baselineData | undefined;
   if (targetUrl && applied.length > 0 && !args.dryRun) {
     console.log('\n📊 Step 5/5 — Re-running Lighthouse to verify improvements…');
+
+    // In prod mode we must rebuild so the new code is reflected in the bundle
+    if (args.prod) {
+      console.log('   Rebuilding for production to measure real bundle savings…');
+      try {
+        await startProdServer(args.project);
+      } catch (e) {
+        console.warn(`   ⚠️  Rebuild failed: ${e}. Scores may not reflect code changes.`);
+      }
+    }
+
     try {
       afterData = await runLighthouse(targetUrl, { device: args.device, throttling: args.throttling });
       console.log(`   Score      : ${afterData.performanceScore}/100`);
