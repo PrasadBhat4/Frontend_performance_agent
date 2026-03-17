@@ -1,0 +1,7 @@
+{
+  "name": "perf-audit",
+  "description": "Autonomously audits and optimizes any Next.js application for performance. Runs Lighthouse, analyzes bundles, detects inefficient data-fetching patterns, applies AST-based code transforms, and produces a before/after Core Web Vitals report.",
+  "tags": ["nextjs", "performance", "lighthouse", "core-web-vitals", "bundle-optimization", "code-transform", "lcp", "cls"],
+  "category": "performance",
+  "version": "1.0.0"
+}

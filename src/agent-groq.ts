@@ -432,6 +432,19 @@ export async function runGroqAgent(projectPath: string, options: AgentOptions = 
     const assistantMsg = choice.message;
     messages.push(assistantMsg);
 
+    // Sliding window: keep system-equivalent first message + last 12 + one collapse message
+    if (messages.length > 20) {
+      const keep = 12;
+      const head = messages.slice(0, 1);
+      const tail = messages.slice(-keep);
+      const collapsedCount = messages.length - 1 - keep;
+      const collapsed: Groq.Chat.Completions.ChatCompletionMessageParam = {
+        role: 'user',
+        content: `[... ${collapsedCount} earlier tool results collapsed to save context ...]`,
+      };
+      messages.splice(0, messages.length, ...head, collapsed, ...tail);
+    }
+
     // Done
     if (choice.finish_reason === 'stop') {
       if (assistantMsg.content) {
@@ -445,28 +458,23 @@ export async function runGroqAgent(projectPath: string, options: AgentOptions = 
 
     // Tool calls
     if (choice.finish_reason === 'tool_calls' && assistantMsg.tool_calls) {
-      const toolResults: Groq.Chat.Completions.ChatCompletionToolMessageParam[] = [];
+      const toolResults = await Promise.all(
+        assistantMsg.tool_calls.map(async (toolCall) => {
+          const toolName = toolCall.function.name;
+          let toolArgs: Record<string, any> = {};
+          try {
+            toolArgs = JSON.parse(toolCall.function.arguments);
+          } catch {}
 
-      for (const toolCall of assistantMsg.tool_calls) {
-        const toolName = toolCall.function.name;
-        let toolArgs: Record<string, any> = {};
-        try {
-          toolArgs = JSON.parse(toolCall.function.arguments);
-        } catch {}
+          if (verbose) {
+            const preview = JSON.stringify(toolArgs).slice(0, 100);
+            console.log(`  → ${toolName}(${preview}${preview.length === 100 ? '…' : ''})`);
+          }
 
-        if (verbose) {
-          const preview = JSON.stringify(toolArgs).slice(0, 100);
-          console.log(`  → ${toolName}(${preview}${preview.length === 100 ? '…' : ''})`);
-        }
-
-        const result = await executeTool(toolName, toolArgs, ctx, dryRun, verbose);
-
-        toolResults.push({
-          role: 'tool',
-          tool_call_id: toolCall.id,
-          content: JSON.stringify(result, null, 2),
-        });
-      }
+          const result = await executeTool(toolName, toolArgs, ctx, dryRun, verbose);
+          return { tool_call_id: toolCall.id, role: 'tool' as const, content: JSON.stringify(result, null, 2) };
+        })
+      );
 
       messages.push(...toolResults);
     }
@@ -488,7 +496,6 @@ function printSummary(
   const line  = '═'.repeat(W);
   const thin  = '─'.repeat(W);
   const pad   = (s: string, n: number) => s.length >= n ? s.slice(0, n) : s + ' '.repeat(n - s.length);
-  const rpad  = (s: string, n: number) => s.length >= n ? s.slice(0, n) : ' '.repeat(n - s.length) + s;
 
   console.log(`\n╔${line}╗`);
   console.log(`║${pad('  📊  Performance Report', W)}║`);
@@ -518,7 +525,8 @@ function printSummary(
     // Metrics table
     console.log(`╠${line}╣`);
     const COL = { label: 16, val: 12, delta: 10 };
-    const hdr = `  ${pad('Metric', COL.label)}${rpad('Before', COL.val)}${rpad('After', COL.val)}${rpad('Δ', COL.delta)}`;
+    const ralign = (s: string, n: number) => s.length >= n ? s.slice(0, n) : ' '.repeat(n - s.length) + s;
+    const hdr = `  ${pad('Metric', COL.label)}${ralign('Before', COL.val)}${ralign('After', COL.val)}${ralign('Δ', COL.delta)}`;
     console.log(`║${pad(hdr, W)}║`);
     console.log(`║  ${thin.slice(0, W - 2)}║`);
 
@@ -555,7 +563,7 @@ function printSummary(
         else if (!r.lowerIsBetter && diff > 0) { marker = ' ✅'; }
         else                     { marker = ' ⚠️'; }
       }
-      const row = `  ${pad(r.label, COL.label)}${rpad(bStr, COL.val)}${rpad(aStr, COL.val)}${rpad(dStr + marker, COL.delta + 2)}`;
+      const row = `  ${pad(r.label, COL.label)}${ralign(bStr, COL.val)}${ralign(aStr, COL.val)}${ralign(dStr + marker, COL.delta + 2)}`;
       console.log(`║${pad(row, W)}║`);
     }
   } else {
