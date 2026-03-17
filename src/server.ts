@@ -14,6 +14,7 @@ import { analyzeBundle } from './tools/bundleAnalyzer.js';
 import { runLighthouse, startLocalServer, generateRecommendations } from './tools/lighthouseRunner.js';
 import { scanDataFetching } from './tools/dataFetchingScanner.js';
 import { applyCodeTransform, TransformType } from './tools/codeTransformer.js';
+import { PerformanceAgent } from './agent.js';
 
 class FrontendPerformanceServer {
   private server: Server;
@@ -176,6 +177,38 @@ class FrontendPerformanceServer {
               },
               required: ['bundleData', 'lighthouseData']
             }
+          },
+          {
+            name: 'runPerformanceAgent',
+            description: 'Runs the autonomous Performance Agent that analyzes and automatically optimizes a Next.js project using Lighthouse, bundle analysis, and code transforms. The agent decides what to fix and applies changes end-to-end.',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                projectPath: {
+                  type: 'string',
+                  description: 'Absolute path to the Next.js project root'
+                },
+                url: {
+                  type: 'string',
+                  description: 'URL for Lighthouse audit. If omitted the agent starts the dev server.'
+                },
+                dryRun: {
+                  type: 'boolean',
+                  description: 'When true, preview changes without applying them to disk (default: false)'
+                },
+                device: {
+                  type: 'string',
+                  enum: ['mobile', 'desktop'],
+                  description: 'Device emulation for Lighthouse (default: mobile)'
+                },
+                throttling: {
+                  type: 'string',
+                  enum: ['simulated3G', 'simulated4G', 'none'],
+                  description: 'Network throttling preset (default: simulated3G)'
+                }
+              },
+              required: ['projectPath']
+            }
           }
         ]
       };
@@ -266,6 +299,25 @@ class FrontendPerformanceServer {
                 {
                   type: 'text',
                   text: report
+                }
+              ]
+            };
+          }
+
+          case 'runPerformanceAgent': {
+            const agent = new PerformanceAgent();
+            const result = await agent.run(args.projectPath as string, {
+              url: args.url as string | undefined,
+              dryRun: args.dryRun as boolean | undefined,
+              device: args.device as 'mobile' | 'desktop' | undefined,
+              throttling: args.throttling as 'simulated3G' | 'simulated4G' | 'none' | undefined,
+              verbose: false,
+            });
+            return {
+              content: [
+                {
+                  type: 'text',
+                  text: result.report || JSON.stringify(result, null, 2)
                 }
               ]
             };

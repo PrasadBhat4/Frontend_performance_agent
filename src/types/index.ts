@@ -39,15 +39,20 @@ export interface TreeshakingOpportunity {
   estimatedSavings: number;
 }
 
+export interface LighthouseMetrics {
+  lcp: number;   // Largest Contentful Paint (ms)
+  fid: number;   // First Input Delay / Max Potential FID (ms)
+  cls: number;   // Cumulative Layout Shift (score)
+  tbt: number;   // Total Blocking Time (ms)
+  fcp: number;   // First Contentful Paint (ms)
+  tti: number;   // Time to Interactive (ms)
+  si: number;    // Speed Index (ms)
+  ttfb: number;  // Time to First Byte (ms)
+}
+
 export interface LighthouseAnalysis {
   performanceScore: number;
-  metrics: {
-    lcp: number;
-    fid: number;
-    cls: number;
-    tbt: number;
-    fcp: number;
-  };
+  metrics: LighthouseMetrics;
   opportunities: Opportunity[];
   diagnostics: Diagnostic[];
 }
@@ -108,4 +113,34 @@ export interface AnalysisOptions {
   buildCommand?: string;
   url?: string;
   skipBuild?: boolean;
+}
+
+export interface PerformanceScores {
+  performanceScore: number;
+  metrics: LighthouseMetrics;
+}
+
+export interface AgentOptions {
+  url?: string;
+  dryRun?: boolean;
+  device?: 'mobile' | 'desktop';
+  throttling?: 'simulated3G' | 'simulated4G' | 'none';
+  maxIterations?: number;
+  model?: string;
+  verbose?: boolean;
+}
+
+export interface AgentResult {
+  projectPath: string;
+  url?: string;
+  initialScores?: PerformanceScores;
+  finalScores?: PerformanceScores;
+  improvement?: number;
+  appliedTransformations: CodeTransformResult[];
+  skippedTransformations: Array<{ type: string; filePath: string; reason: string }>;
+  bundleAnalysis?: BundleAnalysis;
+  dataFetchingAnalysis?: DataFetchingAnalysis;
+  report: string;
+  duration: number;
+  iterations: number;
 }

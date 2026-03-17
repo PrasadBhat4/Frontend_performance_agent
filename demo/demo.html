@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>perf-audit Demo</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0d1117;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    min-height: 100vh;
+    padding: 32px 16px;
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', monospace;
+  }
+
+  .badge {
+    background: linear-gradient(135deg, #7c3aed, #2563eb);
+    color: white;
+    font-size: 13px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    padding: 6px 18px;
+    border-radius: 20px;
+    margin-bottom: 18px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  .window {
+    width: 740px;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 32px 64px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.07);
+    background: #161b22;
+  }
+
+  .titlebar {
+    background: #21262d;
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-bottom: 1px solid #30363d;
+  }
+
+  .dots { display: flex; gap: 7px; }
+  .dot {
+    width: 12px; height: 12px;
+    border-radius: 50%;
+  }
+  .dot.red   { background: #ff5f57; }
+  .dot.yellow{ background: #febc2e; }
+  .dot.green { background: #28c840; }
+
+  .title {
+    flex: 1;
+    text-align: center;
+    color: #8b949e;
+    font-size: 12px;
+    margin-right: 40px;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  }
+
+  .terminal {
+    padding: 20px 22px 28px;
+    font-size: 12.5px;
+    line-height: 1.65;
+    color: #e6edf3;
+    min-height: 480px;
+    overflow: hidden;
+  }
+
+  .line { display: flex; align-items: flex-start; min-height: 1.65em; }
+  .line.hidden { display: none; }
+
+  .prompt { color: #3fb950; margin-right: 8px; flex-shrink: 0; }
+  .cmd    { color: #e6edf3; }
+  .flag   { color: #79c0ff; }
+
+  .dim    { color: #8b949e; }
+  .green  { color: #3fb950; }
+  .yellow { color: #e3b341; }
+  .blue   { color: #79c0ff; }
+  .purple { color: #bc8cff; }
+  .red    { color: #ff7b72; }
+  .white  { color: #f0f6fc; }
+  .orange { color: #ffa657; }
+
+  .box    { color: #79c0ff; font-weight: 500; }
+  .metric-label { color: #8b949e; }
+  .metric-val   { color: #e6edf3; }
+  .metric-good  { color: #3fb950; }
+  .metric-warn  { color: #e3b341; }
+  .score-line   { color: #f0f6fc; font-weight: 600; }
+  .score-delta  { color: #3fb950; font-weight: 700; }
+
+  .cursor {
+    display: inline-block;
+    width: 8px; height: 14px;
+    background: #3fb950;
+    vertical-align: middle;
+    animation: blink 1s step-end infinite;
+    margin-left: 1px;
+  }
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }
+
+  /* Score counter animation */
+  .score-counter { display: inline; }
+</style>
+</head>
+<body>
+
+<div class="badge">🚀 frontend-performance-agent · hackathon demo</div>
+
+<div class="window">
+  <div class="titlebar">
+    <div class="dots">
+      <div class="dot red"></div>
+      <div class="dot yellow"></div>
+      <div class="dot green"></div>
+    </div>
+    <div class="title">zsh — perf-agent-groq</div>
+  </div>
+  <div class="terminal" id="terminal">
+    <!-- Lines injected by JS -->
+  </div>
+</div>
+
+<script>
+const terminal = document.getElementById('terminal');
+
+// ── Script lines ────────────────────────────────────────────────────────────
+// Each entry: { delay (ms since prev), html }
+const LINES = [
+  // Prompt + command
+  { delay: 400, html: `<span class="prompt">❯</span><span class="cmd"> perf-agent-groq </span><span class="flag">--prod</span>` },
+  { delay: 800, html: `` },
+
+  // Interactive prompts
+  { delay: 300, html: `<span class="dim">📁 Projects found in ~/Documents/work/</span>` },
+  { delay: 200, html: `` },
+  { delay: 200, html: `<span class="dim">  1. website</span>` },
+  { delay: 150, html: `<span class="dim">  2. Aipack</span>` },
+  { delay: 150, html: `<span class="dim">  3. my-app</span>` },
+  { delay: 200, html: `` },
+  { delay: 300, html: `<span class="dim">Which folder to audit? </span><span class="green">1</span>` },
+  { delay: 400, html: `<span class="dim">🔍 Found Next.js app at: ~/Documents/work/website/apps/front</span>` },
+  { delay: 200, html: `` },
+  { delay: 300, html: `<span class="dim">📱 Device? [mobile/desktop]: </span><span class="green">mobile</span>` },
+  { delay: 300, html: `<span class="dim">🏗️  Server mode? [dev/prod]: </span><span class="green">prod</span>` },
+  { delay: 300, html: `<span class="dim">🔧 Changes? [preview/apply]: </span><span class="green">apply</span>` },
+  { delay: 400, html: `` },
+
+  // Agent starting
+  { delay: 300, html: `<span class="purple">🤖 Groq AI Agent starting...</span>` },
+  { delay: 200, html: `<span class="dim">   Model   : llama-3.3-70b-versatile</span>` },
+  { delay: 150, html: `<span class="dim">   Server  : Production (next build + next start)</span>` },
+  { delay: 150, html: `<span class="dim">   Device  : mobile  |  Throttling: simulated3G</span>` },
+  { delay: 150, html: `<span class="dim">   Changes : will be applied to disk</span>` },
+  { delay: 300, html: `` },
+
+  // Tool calls
+  { delay: 400, html: `<span class="blue">  → analyzeBundle(...)</span>` },
+  { delay: 600, html: `<span class="dim">     Found: moment.js (298KB), lodash (full import × 6 files), 14 &lt;img&gt; tags</span>` },
+  { delay: 400, html: `` },
+
+  // Build
+  { delay: 400, html: `<span class="yellow">  🏗️  Running next build (this may take a few minutes)...</span>` },
+  { delay: 900, html: `<span class="dim">     ▲ Next.js 15.0.0</span>` },
+  { delay: 500, html: `<span class="dim">     Creating an optimized production build...</span>` },
+  { delay: 1200, html: `<span class="dim">     ✓ Compiled successfully</span>` },
+  { delay: 800, html: `<span class="dim">     ✓ Collecting page data</span>` },
+  { delay: 600, html: `<span class="dim">     ✓ Generating static pages (38/38)</span>` },
+  { delay: 400, html: `<span class="green">  ✅ Production server ready at http://localhost:3000</span>` },
+  { delay: 300, html: `` },
+
+  // Lighthouse baseline
+  { delay: 400, html: `<span class="blue">  → runLighthouse({ url: "http://localhost:3000", device: "mobile" })</span>` },
+  { delay: 1800, html: `<span class="dim">     🔍 Running Lighthouse audit...</span>` },
+  { delay: 1200, html: `<span class="dim">     Score: 26  |  LCP: 11.10s  |  TBT: 1312ms  |  CLS: 0.355</span>` },
+  { delay: 300, html: `` },
+
+  // Data fetching scan
+  { delay: 300, html: `<span class="blue">  → scanDataFetching(...)</span>` },
+  { delay: 700, html: `<span class="dim">     Found 8 SSR pages with static data → ISR candidates</span>` },
+  { delay: 300, html: `` },
+
+  // Transforms
+  { delay: 300, html: `<span class="blue">  → applyCodeTransform(replaceMomentWithDayjs → customers/page.tsx)</span>` },
+  { delay: 500, html: `<span class="green">     ✅ -298 KB</span>` },
+  { delay: 300, html: `<span class="blue">  → applyCodeTransform(replaceMomentWithDayjs → blog/[slug]/page.tsx)</span>` },
+  { delay: 400, html: `<span class="green">     ✅ -298 KB</span>` },
+  { delay: 300, html: `<span class="blue">  → applyCodeTransform(optimizeLodashImports → utils/format.ts)</span>` },
+  { delay: 400, html: `<span class="green">     ✅ tree-shaking enabled</span>` },
+  { delay: 300, html: `<span class="blue">  → applyCodeTransform(convertImgToNextImage → hero/Banner.tsx)</span>` },
+  { delay: 400, html: `<span class="green">     ✅ Next.js &lt;Image&gt; with lazy loading</span>` },
+  { delay: 300, html: `<span class="blue">  → applyCodeTransform(convertSSRToISR → products/page.tsx)</span>` },
+  { delay: 400, html: `<span class="green">     ✅ revalidate: 60</span>` },
+  { delay: 200, html: `<span class="dim">     ... 22 more transforms applied</span>` },
+  { delay: 300, html: `` },
+
+  // Rebuild
+  { delay: 300, html: `<span class="yellow">  🏗️  Rebuilding to measure real bundle savings...</span>` },
+  { delay: 2000, html: `<span class="dim">     ✓ Compiled successfully</span>` },
+  { delay: 500, html: `<span class="green">  ✅ Production server ready at http://localhost:3000</span>` },
+  { delay: 300, html: `` },
+
+  // Final Lighthouse
+  { delay: 400, html: `<span class="blue">  → runLighthouse({ url: "http://localhost:3000", device: "mobile" })</span>` },
+  { delay: 1800, html: `<span class="dim">     🔍 Running Lighthouse audit...</span>` },
+  { delay: 1200, html: `<span class="dim">     Score: 52  |  LCP: 3.50s  |  TBT: 1236ms  |  CLS: 0.228</span>` },
+  { delay: 300, html: `` },
+
+  // ── Summary box ────────────────────────────────────────────────────────
+  { delay: 600, html: `<span class="box">╔══════════════════════════════════════════════════════════════╗</span>` },
+  { delay: 80,  html: `<span class="box">║</span>  <span class="white">📊  Performance Report</span>                                      <span class="box">║</span>` },
+  { delay: 80,  html: `<span class="box">╠══════════════════════════════════════════════════════════════╣</span>` },
+  { delay: 80,  html: `<span class="box">║</span>  <span class="dim">Mode    :</span> <span class="green">Production</span>  <span class="dim">(next build + next start)</span>             <span class="box">║</span>` },
+  { delay: 80,  html: `<span class="box">║</span>  <span class="dim">Device  : mobile  |  Throttling: simulated3G</span>                <span class="box">║</span>` },
+  { delay: 80,  html: `<span class="box">║</span>  <span class="dim">Changes : Applied to disk</span>                                   <span class="box">║</span>` },
+  { delay: 80,  html: `<span class="box">╠══════════════════════════════════════════════════════════════╣</span>` },
+  { delay: 200, html: `<span class="box">║</span>  <span class="score-line">Score   : 26  →  52  </span><span class="score-delta">(+26)</span>  <span class="orange">🎉</span>                              <span class="box">║</span>` },
+  { delay: 80,  html: `<span class="box">╠══════════════════════════════════════════════════════════════╣</span>` },
+  { delay: 80,  html: `<span class="box">║</span>  <span class="white">Metric          Before      After       Δ</span>                   <span class="box">║</span>` },
+  { delay: 80,  html: `<span class="box">║</span>  <span class="dim">──────────────────────────────────────────────────</span>          <span class="box">║</span>` },
+  { delay: 120, html: `<span class="box">║</span>  <span class="metric-label">LCP      </span>       <span class="metric-val">11.10s</span>      <span class="metric-val"> 3.50s</span>       <span class="metric-good">-7.60s ✅</span>           <span class="box">║</span>` },
+  { delay: 120, html: `<span class="box">║</span>  <span class="metric-label">CLS      </span>        <span class="metric-val">0.355</span>       <span class="metric-val">0.228</span>       <span class="metric-good">-0.127 ✅</span>           <span class="box">║</span>` },
+  { delay: 120, html: `<span class="box">║</span>  <span class="metric-label">TBT      </span>       <span class="metric-val">1312ms</span>      <span class="metric-val">1236ms</span>        <span class="metric-good">-76ms ✅</span>           <span class="box">║</span>` },
+  { delay: 120, html: `<span class="box">║</span>  <span class="metric-label">FCP      </span>        <span class="metric-val">5.45s</span>       <span class="metric-val">4.10s</span>       <span class="metric-good">-1.35s ✅</span>           <span class="box">║</span>` },
+  { delay: 120, html: `<span class="box">║</span>  <span class="metric-label">TTFB     </span>        <span class="metric-val"> 290ms</span>       <span class="metric-val">195ms</span>        <span class="metric-good">-95ms ✅</span>           <span class="box">║</span>` },
+  { delay: 80,  html: `<span class="box">╠══════════════════════════════════════════════════════════════╣</span>` },
+  { delay: 80,  html: `<span class="box">║</span>  <span class="dim">Transforms applied:</span> <span class="green">27</span>   <span class="dim">skipped:</span> <span class="dim">0</span>   <span class="dim">iterations:</span> <span class="dim">12</span>        <span class="box">║</span>` },
+  { delay: 80,  html: `<span class="box">║</span>  <span class="dim">──────────────────────────────────────────────────</span>          <span class="box">║</span>` },
+  { delay: 80,  html: `<span class="box">║</span>  <span class="green">✅ replaceMomentWithDayjs</span>    <span class="dim">→ customers/page.tsx</span>              <span class="box">║</span>` },
+  { delay: 80,  html: `<span class="box">║</span>  <span class="green">✅ replaceMomentWithDayjs</span>    <span class="dim">→ blog/[slug]/page.tsx</span>            <span class="box">║</span>` },
+  { delay: 80,  html: `<span class="box">║</span>  <span class="green">✅ optimizeLodashImports</span>     <span class="dim">→ utils/format.ts</span>                 <span class="box">║</span>` },
+  { delay: 80,  html: `<span class="box">║</span>  <span class="green">✅ convertImgToNextImage</span>     <span class="dim">→ hero/Banner.tsx</span>                 <span class="box">║</span>` },
+  { delay: 80,  html: `<span class="box">║</span>  <span class="green">✅ convertSSRToISR</span>           <span class="dim">→ products/page.tsx</span>               <span class="box">║</span>` },
+  { delay: 80,  html: `<span class="box">║</span>  <span class="dim">... 22 more</span>                                                  <span class="box">║</span>` },
+  { delay: 80,  html: `<span class="box">╚══════════════════════════════════════════════════════════════╝</span>` },
+
+  // Blinking cursor at end
+  { delay: 200, html: `<span class="prompt">❯</span> <span class="cursor"></span>` },
+];
+
+// ── Renderer ────────────────────────────────────────────────────────────────
+let elapsed = 0;
+
+LINES.forEach(({ delay, html }) => {
+  elapsed += delay;
+  setTimeout(() => {
+    const div = document.createElement('div');
+    div.classList.add('line');
+    div.innerHTML = html;
+    terminal.appendChild(div);
+    // Auto-scroll
+    div.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, elapsed);
+});
+</script>
+</body>
+</html>

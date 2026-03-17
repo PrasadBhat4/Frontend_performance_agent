@@ -1,6 +1,6 @@
 import lighthouse from 'lighthouse';
 import * as chromeLauncher from 'chrome-launcher';
-import { LighthouseAnalysis, Opportunity, Diagnostic } from '../types/index.js';
+import { LighthouseAnalysis, LighthouseMetrics, Opportunity, Diagnostic } from '../types/index.js';
 
 export async function runLighthouse(
   url: string, 
@@ -75,12 +75,15 @@ function parseLighthouseReport(report: any): LighthouseAnalysis {
   const audits = report.audits;
   
   // Extract Core Web Vitals and performance metrics
-  const metrics = {
+  const metrics: LighthouseMetrics = {
     lcp: audits['largest-contentful-paint']?.numericValue || 0,
     fid: audits['max-potential-fid']?.numericValue || 0,
     cls: audits['cumulative-layout-shift']?.numericValue || 0,
     tbt: audits['total-blocking-time']?.numericValue || 0,
     fcp: audits['first-contentful-paint']?.numericValue || 0,
+    tti: audits['interactive']?.numericValue || 0,
+    si: audits['speed-index']?.numericValue || 0,
+    ttfb: audits['server-response-time']?.numericValue || 0,
   };
   
   // Extract optimization opportunities
@@ -171,41 +174,72 @@ export async function checkUrlAccessibility(url: string): Promise<boolean> {
 
 // Utility to start local dev server if needed
 export async function startLocalServer(projectPath: string): Promise<string> {
-  const { execSync, spawn } = await import('child_process');
-  
-  try {
-    // Check if dev server is already running
-    const isRunning = await checkUrlAccessibility('http://localhost:3000');
-    if (isRunning) {
+  const { spawn } = await import('child_process');
+
+  // Check if already running
+  const isRunning = await checkUrlAccessibility('http://localhost:3000');
+  if (isRunning) {
+    return 'http://localhost:3000';
+  }
+
+  console.log('Starting Next.js dev server...');
+
+  spawn('npm', ['run', 'dev'], {
+    cwd: projectPath,
+    stdio: 'pipe',
+    detached: true,
+  });
+
+  // Wait for server to start (up to 60 seconds)
+  for (let i = 0; i < 60; i++) {
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    if (await checkUrlAccessibility('http://localhost:3000')) {
+      console.log('✅ Dev server started at http://localhost:3000');
       return 'http://localhost:3000';
     }
-    
-    console.log('Starting Next.js dev server...');
-    
-    // Start dev server in background
-    const child = spawn('npm', ['run', 'dev'], {
-      cwd: projectPath,
-      stdio: 'pipe',
-      detached: true,
-    });
-    
-    // Wait for server to start
-    let attempts = 0;
-    while (attempts < 30) { // 30 seconds max
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      const isReady = await checkUrlAccessibility('http://localhost:3000');
-      if (isReady) {
-        console.log('✅ Dev server started at http://localhost:3000');
-        return 'http://localhost:3000';
-      }
-      attempts++;
-    }
-    
-    throw new Error('Dev server failed to start within 30 seconds');
-    
-  } catch (error) {
-    throw new Error(`Failed to start dev server: ${error}`);
   }
+
+  throw new Error('Dev server failed to start within 60 seconds');
+}
+
+// Utility to build for production then start the production server
+export async function startProdServer(projectPath: string): Promise<string> {
+  const { execSync, spawn } = await import('child_process');
+
+  // If something is already listening on 3000, just use it
+  const isRunning = await checkUrlAccessibility('http://localhost:3000');
+  if (isRunning) {
+    console.log('✅ Server already running at http://localhost:3000');
+    return 'http://localhost:3000';
+  }
+
+  console.log('🏗️  Running next build (this may take a few minutes)...');
+  try {
+    execSync('npm run build', {
+      cwd: projectPath,
+      stdio: 'inherit',   // stream build output so the user can see progress
+    });
+  } catch (error) {
+    throw new Error(`next build failed: ${error}`);
+  }
+
+  console.log('🚀 Starting Next.js production server (next start)...');
+  spawn('npm', ['run', 'start'], {
+    cwd: projectPath,
+    stdio: 'pipe',
+    detached: true,
+  });
+
+  // Wait up to 60 seconds for the production server to become accessible
+  for (let i = 0; i < 60; i++) {
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    if (await checkUrlAccessibility('http://localhost:3000')) {
+      console.log('✅ Production server ready at http://localhost:3000');
+      return 'http://localhost:3000';
+    }
+  }
+
+  throw new Error('Production server failed to start within 60 seconds after build');
 }
 
 // Generate performance recommendations based on Lighthouse results
