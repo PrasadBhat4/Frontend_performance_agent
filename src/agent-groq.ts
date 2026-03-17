@@ -377,27 +377,36 @@ export async function runGroqAgent(projectPath: string, options: AgentOptions = 
         tool_choice: 'auto',
       });
     } catch (err: any) {
-      // Helper: handle tool_use_failed (model tried to output report as a tool call)
+      // Detect tool_use_failed regardless of how the SDK surfaces the error:
+      // - err.error.code (Groq SDK parsed inner object)
+      // - err.message string contains 'tool_use_failed' (fallback)
+      const isToolUseFailed = (e: any): boolean =>
+        (e?.error?.code === 'tool_use_failed') ||
+        (typeof e?.message === 'string' && e.message.includes('tool_use_failed'));
+
       const handleToolUseFailed = (e: any): boolean => {
-        if (e?.status === 400 && e?.error?.code === 'tool_use_failed') {
-          const text = e?.error?.failed_generation ?? '';
-          if (text) {
-            console.log('\n══════════════════════════════════════════════════════════');
-            console.log('  Final Report');
-            console.log('══════════════════════════════════════════════════════════\n');
-            console.log(text);
-          }
-          return true;
+        if (!isToolUseFailed(e)) return false;
+        // Extract the report text — try the structured field first, then parse the message string
+        let text: string = e?.error?.failed_generation ?? '';
+        if (!text && typeof e?.message === 'string') {
+          const m = e.message.match(/"failed_generation"\s*:\s*"([\s\S]+?)(?:"\s*[},])/);
+          if (m) text = m[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
         }
-        return false;
+        if (text) {
+          console.log('\n══════════════════════════════════════════════════════════');
+          console.log('  Final Report (from model)');
+          console.log('══════════════════════════════════════════════════════════\n');
+          console.log(text);
+        }
+        return true;
       };
 
-      if (handleToolUseFailed(err)) { break; }
+      if (handleToolUseFailed(err)) break;
 
       // Auto-fallback chain when rate limits hit
       const fallbacks = ['meta-llama/llama-4-scout-17b-16e-instruct', 'llama-3.1-8b-instant'];
       const nextModel = fallbacks.find(m => m !== model);
-      if (err?.status === 429 && nextModel) {
+      if ((err?.status === 429 || err?.status === 413) && nextModel) {
         console.log(`  ⚠️  Rate limit on ${model}, falling back to ${nextModel}...`);
         model = nextModel;
         try {
@@ -409,7 +418,7 @@ export async function runGroqAgent(projectPath: string, options: AgentOptions = 
             tool_choice: 'auto',
           });
         } catch (fallbackErr: any) {
-          if (handleToolUseFailed(fallbackErr)) { break; }
+          if (handleToolUseFailed(fallbackErr)) break;
           throw fallbackErr;
         }
       } else {
